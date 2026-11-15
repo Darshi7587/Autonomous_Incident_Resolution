@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 
 from backend.core.config import settings
 from backend.database.session import init_db, SessionLocal
-from backend.database.models import InfrastructureNode, ServiceDependency, Incident, Alert, IncidentEvent, RemediationPlan
+from backend.database.models import InfrastructureNode, ServiceDependency, Incident, Alert, IncidentEvent, RemediationPlan, User
+from backend.core.security import hash_password
 from backend.api.websocket_hub import ws_hub
 from backend.api.routers import (
     overview,
@@ -21,7 +22,8 @@ from backend.api.routers import (
     knowledge,
     analytics,
     audit,
-    integrations
+    integrations,
+    auth
 )
 
 logging.basicConfig(
@@ -51,6 +53,19 @@ def seed_initial_data():
                 ServiceDependency(upstream_service="nexus-demo-order-service", downstream_service="nexus-demo-cache-db")
             ]
             session.add_all(deps)
+
+            # Seed Initial Admin & Operator
+            admin_user = User(
+                username="admin",
+                hashed_password=hash_password("nexus_admin_2026"),
+                role="admin"
+            )
+            op_user = User(
+                username="operator",
+                hashed_password=hash_password("operator_pass_2026"),
+                role="operator"
+            )
+            session.add_all([admin_user, op_user])
 
             demo_inc_id = "inc-seed-001"
             inc = Incident(
@@ -138,6 +153,7 @@ app.include_router(knowledge.router, prefix="/api")
 app.include_router(analytics.router, prefix="/api")
 app.include_router(audit.router, prefix="/api")
 app.include_router(integrations.router, prefix="/api")
+app.include_router(auth.router, prefix="/api")
 
 @app.websocket("/ws/events")
 async def websocket_events(websocket: WebSocket):

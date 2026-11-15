@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  nexus-core:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nexus-ai-core
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - PROMETHEUS_URL=http://nexus-prometheus:9090
+      - LOKI_URL=http://nexus-loki:3100
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - nexus_data:/app/data
+    networks:
+      - nexus-network
+    depends_on:
+      - prometheus
+      - loki
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: nexus-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    networks:
+      - nexus-network
+
+  loki:
+    image: grafana/loki:2.9.5
+    container_name: nexus-loki
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./infrastructure/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - nexus-network
+
+  demo-order-service:
+    image: python:3.11-slim
+    container_name: nexus-demo-order-service
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    command: >
+      bash -c "pip install fastapi uvicorn psutil &&
+      python -c '
+      from fastapi import FastAPI
+      app = FastAPI(title=\"Demo Order Service\")
+      @app.get(\"/health\")
+      def health(): return {\"status\": \"healthy\"}
+      @app.get(\"/api/orders\")
+      def orders(): return [{\"order_id\": 101, \"item\": \"GPU Cluster\"}]
+      if __name__ == \"__main__\":
+          import uvicorn
+          uvicorn.run(app, host=\"0.0.0.0\", port=8081)
+      '"
+    networks:
+      - nexus-network
+
+volumes:
+  nexus_data:
+  prometheus_data:
+  loki_data:
+
+networks:
+  nexus-network:
+    driver: bridge

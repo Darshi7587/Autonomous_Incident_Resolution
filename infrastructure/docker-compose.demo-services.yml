@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  nexus-target-api:
+    image: python:3.11-slim
+    container_name: nexus-demo-order-service
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    command: >
+      bash -c "pip install fastapi uvicorn psutil &&
+      python -c '
+      import time, psutil
+      from fastapi import FastAPI, HTTPException
+      app = FastAPI(title=\"Order Service\")
+      @app.get(\"/health\")
+      def health(): return {\"status\": \"healthy\", \"service\": \"order-service\"}
+      @app.get(\"/api/orders\")
+      def get_orders(): return [{\"id\": 101, \"item\": \"Server Rack\", \"status\": \"shipped\"}]
+      @app.post(\"/api/orders/stress\")
+      def stress(cpu_percent: int = 90, duration: int = 15):
+          t_end = time.time() + duration
+          while time.time() < t_end: _ = [x**2 for x in range(10000)]
+          return {\"status\": \"stress_completed\"}
+      if __name__ == \"__main__\":
+          import uvicorn
+          uvicorn.run(app, host=\"0.0.0.0\", port=8081)
+      '"
+    networks:
+      - nexus-demo-net
+
+  nexus-target-db:
+    image: redis:7.2-alpine
+    container_name: nexus-demo-cache-db
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - nexus-demo-net
+
+networks:
+  nexus-demo-net:
+    driver: bridge
